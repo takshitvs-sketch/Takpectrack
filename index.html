@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Panimalar — Student Bus Tracker</title>
+
+  <!-- Inter font + Leaflet -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    :root{
+      --bg: linear-gradient(180deg,#071028 0%, #07284b 60%, #022b44 100%);
+      --card: rgba(255,255,255,0.04);
+      --muted: rgba(255,255,255,0.75);
+      --accent-a: #00d4ff;
+      --accent-b: #7b61ff;
+      --radius: 12px;
+      font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Roboto, Arial;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:var(--bg);color:#fff;-webkit-font-smoothing:antialiased}
+    /* app layout */
+    .app{min-height:100vh;display:flex;flex-direction:column}
+    header{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.03);background:linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01))}
+    .logo{width:52px;height:52px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--accent-a),var(--accent-b));color:#022449;font-weight:800}
+    .title{font-weight:700}
+    .subtitle{font-size:13px;color:var(--muted);margin-top:2px}
+    main{flex:1;display:flex;align-items:stretch;justify-content:center;padding:18px}
+
+    /* page container */
+    .screen{
+      width:100%; max-width:1100px; display:none; gap:18px;
+      align-items:stretch;
+    }
+    .screen.active{ display:flex; }
+
+    /* columns */
+    .leftCol{width:380px; max-width:100%; background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-radius:var(--radius); padding:18px; box-shadow:0 14px 40px rgba(2,8,30,0.6); border:1px solid rgba(255,255,255,0.03) }
+    .rightCol{flex:1; margin-left:18px; border-radius:var(--radius); overflow:hidden; box-shadow:0 14px 40px rgba(2,8,30,0.6); border:1px solid rgba(255,255,255,0.03) }
+
+    /* full map page for mobile where left column stacks */
+    .stack{display:flex;flex-direction:column}
+    @media (max-width:980px){ .screen{flex-direction:column} .rightCol{margin-left:0;height:56vh} .leftCol{order:2} }
+
+    h1,h2{margin:6px 0 10px 0}
+    label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+    input,select,button{width:100%;padding:12px 14px;border-radius:10px;border:none;background:rgba(255,255,255,0.02);color:#fff;font-size:15px;margin-bottom:10px;outline:none}
+    .btn{background:linear-gradient(90deg,var(--accent-a),var(--accent-b));color:#022449;font-weight:800;cursor:pointer}
+    .btn.ghost{background:transparent;color:var(--muted);border:1px solid rgba(255,255,255,0.04)}
+
+    .muted{color:var(--muted);font-size:13px}
+    .small{font-size:13px;color:var(--muted)}
+
+    /* stop list */
+    .stopList{max-height:300px;overflow:auto;padding-right:6px;display:flex;flex-direction:column;gap:8px}
+    .stopItem{display:flex;justify-content:space-between;align-items:center;padding:10px;border-radius:10px;background:rgba(255,255,255,0.01);transition:transform .12s,box-shadow .12s}
+    .stopItem:hover{transform:translateY(-4px);box-shadow:0 10px 30px rgba(2,8,30,0.6)}
+
+    /* map */
+    #map{width:100%;height:100%;display:block}
+    .mapContainer{height:calc(100vh - 170px); min-height:420px}
+    @media (max-width:980px){ .mapContainer{height:56vh;min-height:320px} }
+
+    /* map info card (on tracking screen) */
+    .mapInfo{position:absolute;right:18px;top:92px;width:300px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,0.03);box-shadow:0 10px 30px rgba(2,8,30,0.6)}
+    .mapInfo .row{display:flex;justify-content:space-between;margin-bottom:8px;font-weight:700;color:#fff}
+
+    footer{padding:12px 18px;border-top:1px solid rgba(255,255,255,0.03);display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:13px;flex-wrap:wrap}
+
+    /* small clear helper */
+    .centerSmall{display:flex;gap:8px;align-items:center}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="logo">PC</div>
+      <div>
+        <div class="title">Panimalar — Student Bus Tracker</div>
+        <div class="subtitle">Login → Select Bus & Stop → Track</div>
+      </div>
+    </header>
+
+    <main>
+      <!-- SCREEN: Login -->
+      <div id="screen-login" class="screen active">
+        <div class="leftCol">
+          <h2>Student Login</h2>
+          <p class="muted">Enter your roll and DOB. Login stored locally only. (Format: <code>2025PECCS####</code>)</p>
+
+          <label for="roll">Roll number</label>
+          <input id="roll" type="text" placeholder="2025PECCS1039" inputmode="text" />
+
+          <label for="dob">Date of birth</label>
+          <input id="dob" type="date" />
+
+          <div style="display:flex;gap:10px">
+            <button class="btn" id="loginBtn">Login</button>
+            <button class="btn ghost" id="demoLogin">Demo</button>
+          </div>
+
+          <div id="loginMsg" style="margin-top:8px"></div>
+
+          <div style="margin-top:14px" class="small">How to use: Login → Next to choose bus & stop → Track on the map.</div>
+          <div style="margin-top:10px" class="small">Created by TeamX • Developed by Takshit</div>
+        </div>
+
+        <div class="rightCol mapContainer" style="position:relative">
+          <!-- small preview map to keep layout consistent -->
+          <div id="mapPreview" style="width:100%;height:100%;"></div>
+        </div>
+      </div>
+
+      <!-- SCREEN: Select bus & stop -->
+      <div id="screen-select" class="screen">
+        <div class="leftCol">
+          <h2>Choose Bus & Stop</h2>
+          <p class="muted">Select bus (1–20). Then choose the stop from Chennai list. Only the selected bus route will be shown on the map.</p>
+
+          <label for="busSelect">Bus number</label>
+          <select id="busSelect"></select>
+
+          <label for="speedSelect">Simulation speed</label>
+          <select id="speedSelect">
+            <option value="1">Realistic</option>
+            <option value="1.5">1.5×</option>
+            <option value="2">2×</option>
+            <option value="3">Fast demo</option>
+          </select>
+
+          <label>Choose stop</label>
+          <div class="stopList" id="stopList"></div>
+
+          <div style="display:flex;gap:10px;margin-top:12px">
+            <button class="btn" id="toTrackBtn">Open Map & Track</button>
+            <button class="btn ghost" id="backToLogin">Back</button>
+          </div>
+
+          <div style="margin-top:14px" class="small">How to use: Login → Choose bus → Select stop → Track</div>
+          <div style="margin-top:10px" class="small">Created by TeamX • Developed by Takshit</div>
+        </div>
+
+        <div class="rightCol mapContainer" style="position:relative">
+          <div id="mapSelect" style="width:100%;height:100%"></div>
+        </div>
+      </div>
+
+      <!-- SCREEN: Tracking -->
+      <div id="screen-track" class="screen">
+        <div class="leftCol stack">
+          <h2>Tracking</h2>
+          <p class="muted">Only the selected bus route is shown. ETA calculates to your chosen stop in real time (simulated).</p>
+
+          <div class="small" style="margin-bottom:8px"><strong>Student:</strong> <span id="studentLabel">—</span></div>
+          <div class="small" style="margin-bottom:8px"><strong>Bus:</strong> <span id="busLabel">—</span></div>
+          <div class="small" style="margin-bottom:8px"><strong>Stop:</strong> <span id="stopLabel">—</span></div>
+
+          <div style="display:flex;gap:10px;margin-top:10px">
+            <button class="btn" id="centerToBus">Center to Bus</button>
+            <button class="btn ghost" id="centerToStop">Center to Stop</button>
+          </div>
+
+          <div style="margin-top:12px" class="small"><strong>Distance:</strong> <span id="distLabel">—</span></div>
+          <div style="margin-top:6px" class="small"><strong>ETA:</strong> <span id="etaLabel">—</span></div>
+
+          <div style="margin-top:14px" class="small">How to use: Use controls above to center. Close session by clicking Logout on footer.</div>
+          <div style="margin-top:10px" class="small">Created by TeamX • Developed by Takshit</div>
+        </div>
+
+        <div class="rightCol" style="position:relative">
+          <div id="mapTrack" style="width:100%;height:100%"></div>
+          <div class="mapInfo" id="mapInfo" style="display:none">
+            <div class="row"><div>Selected Bus</div><div id="miBus">—</div></div>
+            <div class="row"><div>Selected Stop</div><div id="miStop">—</div></div>
+            <div class="row"><div>Distance</div><div id="miDist">—</div></div>
+            <div class="row"><div>ETA</div><div id="miETA">—</div></div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="centerSmall">How to use: Login → Choose bus → Select stop → Open map to track. (Local simulation)</div>
+      <div class="centerSmall"><button class="btn ghost" id="logoutFooter">Logout</button></div>
+    </footer>
+  </div>
+
+  <script>
+    /* ===========================
+       Data & utilities
+       =========================== */
+    const STOPS = [
+      { name: "Valasaravakkam", lat: 13.0583, lng: 80.1754 },
+      { name: "Maduravoyal", lat: 13.0606, lng: 80.1793 },
+      { name: "Koyambedu", lat: 13.0645, lng: 80.2160 },
+      { name: "Porur", lat: 13.0257, lng: 80.1636 },
+      { name: "Iyyappanthangal", lat: 13.0613, lng: 80.1362 },
+      { name: "Karayanchavadi", lat: 13.0870, lng: 80.0830 },
+      { name: "Nazarathpet", lat: 13.0670, lng: 80.0910 },
+      { name: "Thirumazhisai", lat: 13.0690, lng: 80.0750 },
+      { name: "Saveetha Dental College", lat: 13.0240, lng: 80.0910 },
+      { name: "EVP Film City", lat: 13.0710, lng: 80.1010 },
+      { name: "Pattabiram", lat: 13.0990, lng: 80.0720 },
+      { name: "Avadi", lat: 13.1037, lng: 80.1260 },
+      { name: "Thirunindravur", lat: 13.0880, lng: 80.0820 },
+      { name: "Sriperumbudur", lat: 12.9426, lng: 80.0555 },
+      { name: "Poonamallee", lat: 13.0641, lng: 80.1460 }
+    ];
+
+    const BUS_COUNT = 20;
+    const ROUTES = {}; // each route contains path[] & stops[]
+    function jitter(lat,lng,amt=0.006){ return [lat + (Math.random()-0.5)*amt, lng + (Math.random()-0.5)*amt]; }
+
+    // build demo route for each bus (but we will draw only the selected route)
+    for(let i=1;i<=BUS_COUNT;i++){
+      // pick random sequence of stops (keeps realistic order by slicing)
+      const sample = STOPS.slice().sort(()=>0.5-Math.random()).slice(0, 6 + Math.floor(Math.random()*2));
+      const path = [];
+      sample.forEach(s=>{
+        const parts = 1 + Math.floor(Math.random()*2);
+        for(let p=0;p<parts;p++) path.push(jitter(s.lat,s.lng,0.01));
+        path.push([s.lat,s.lng]);
+      });
+      ROUTES["Bus " + i] = {
+        id: "BUS" + String(i).padStart(2,'0'),
+        color: `hsl(${(i*31)%360} 85% 60%)`,
+        speedKmph: 18 + Math.floor(Math.random()*14),
+        path,
+        stops: sample
+      };
+    }
+
+    function haversine(lat1,lon1,lat2,lon2){
+      const R = 6371000;
+      const toRad = v => v*Math.PI/180;
+      const dLat = toRad(lat2-lat1), dLon = toRad(lon2-lon1);
+      const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+      return 2*R*Math.asin(Math.sqrt(a));
+    }
+    function formatDistance(m){
+      if(m>=1000) return (m/1000).toFixed(2) + " km";
+      return Math.round(m) + " m";
+    }
+    function formatETA(s){
+      if(!isFinite(s) || s<0) return "—";
+      s = Math.round(s);
+      if(s>=3600){ const h=Math.floor(s/3600), m=Math.floor((s%3600)/60); return `${h} h ${m} m`; }
+      return `${Math.floor(s/60)} m ${s%60} s`;
+    }
+
+    /* ===========================
+       Page & DOM refs
+       =========================== */
+    const screens = {
+      login: document.getElementById('screen-login'),
+      select: document.getElementById('screen-select'),
+      track: document.getElementById('screen-track')
+    };
+    const rollEl = document.getElementById('roll'), dobEl = document.getElementById('dob');
+    const loginBtn = document.getElementById('loginBtn'), demoLogin = document.getElementById('demoLogin');
+    const loginMsg = document.getElementById('loginMsg');
+
+    const busSelectEl = document.getElementById('busSelect'), speedSelect = document.getElementById('speedSelect');
+    const stopListEl = document.getElementById('stopList'), toTrackBtn = document.getElementById('toTrackBtn'), backToLogin = document.getElementById('backToLogin');
+
+    const studentLabel = document.getElementById('studentLabel'), busLabel = document.getElementById('busLabel'), stopLabel = document.getElementById('stopLabel');
+    const distLabel = document.getElementById('distLabel'), etaLabel = document.getElementById('etaLabel');
+    const centerToBus = document.getElementById('centerToBus'), centerToStop = document.getElementById('centerToStop');
+
+    const studentInfoFooter = document.getElementById('studentLabel'); // reuse
+    const logoutFooter = document.getElementById('logoutFooter');
+
+    const miBus = document.getElementById('miBus'), miStop = document.getElementById('miStop'), miDist = document.getElementById('miDist'), miETA = document.getElementById('miETA');
+    const mapInfoCard = document.getElementById('mapInfo');
+
+    // maps
+    let mapPreview, mapSelect, mapTrack;
+    let previewLayerGroup, selectLayerGroup, trackLayerGroup;
+
+    // simulation state for selected bus
+    const simState = {
+      selectedBusKey: null,
+      selectedStopIndex: null,
+      progress: null, // {index, frac, dir}
+      marker: null,
+      poly: null,
+      stopMarker: null,
+      simInterval: null,
+      simSpeed: 1
+    };
+
+    /* ===========================
+       Helpers: UI navigation
+       =========================== */
+    function showScreen(name){
+      Object.keys(screens).forEach(k => screens[k].classList.toggle('active', k===name));
+    }
+
+    // validation
+    function validateRoll(roll){
+      if(!roll) return false;
+      const m = roll.match(/^(\d{4})([A-Za-z]+)(\d+)$/);
+      if(!m) return false;
+      if(m[1] !== '2025') return false;
+      const num = parseInt(m[3],10);
+      if(Number.isNaN(num)) return false;
+      if(num < 0 || num > 1110) return false;
+      return true;
+    }
+
+    /* ===========================
+       Login logic
+       =========================== */
+    demoLogin.addEventListener('click', e=>{
+      e.preventDefault();
+      rollEl.value = '2025PECCS0100';
+      dobEl.value = '2004-05-10';
+      showLoginMsg('Demo filled, click Login', 'ok');
+    });
+
+    loginBtn.addEventListener('click', e=>{
+      e.preventDefault();
+      const roll = rollEl.value.trim(), dob = dobEl.value;
+      if(!validateRoll(roll)){ showLoginMsg('Roll invalid. Use 2025PECCS#### (number ≤ 1110).','err'); return; }
+      if(!dob){ showLoginMsg('Enter DOB.','err'); return; }
+      const student = { roll, dob };
+      localStorage.setItem('pc_student', JSON.stringify(student));
+      state.student = student;
+      studentLabel.textContent = student.roll;
+      // go to select screen
+      populateSelect(); // ensure selects ready
+      showScreen('select');
+    });
+
+    function showLoginMsg(msg,type){
+      loginMsg.innerHTML = type==='err' ? `<div style="padding:10px;border-radius:10px;background:rgba(255,82,82,0.12);color:#ff5252;font-weight:700">${msg}</div>` :
+        `<div style="padding:10px;border-radius:10px;background:rgba(0,200,81,0.08);color:#00c851;font-weight:700">${msg}</div>`;
+      setTimeout(()=>loginMsg.innerHTML='',3000);
+    }
+
+    // restore if stored
+    const state = { student: null };
+    (function tryRestore(){
+      const s = localStorage.getItem('pc_student');
+      if(s){ try{ state.student = JSON.parse(s); rollEl.value = state.student.roll || ''; dobEl.value = state.student.dob || ''; studentLabel.textContent = state.student.roll; showScreen('select'); populateSelect(); }catch(e){} }
+    })();
+
+    /* ===========================
+       Populate select screen UI & maps
+       =========================== */
+    function populateSelect(){
+      // fill bus drop
+      busSelectEl.innerHTML = '';
+      for(let i=1;i<=BUS_COUNT;i++){
+        const k = 'Bus ' + i;
+        const op = document.createElement('option'); op.value = k; op.textContent = k;
+        busSelectEl.appendChild(op);
+      }
+      simState.selectedBusKey = busSelectEl.value;
+      busSelectEl.addEventListener('change', ()=> {
+        simState.selectedBusKey = busSelectEl.value;
+        drawSelectedRouteOnSelectMap();
+      });
+
+      // stops list
+      stopListEl.innerHTML = '';
+      STOPS.forEach((s, idx)=>{
+        const el = document.createElement('div'); el.className = 'stopItem';
+        el.innerHTML = `<div><div style="font-weight:700">${s.name}</div><div class="small">${s.lat.toFixed(4)}, ${s.lng.toFixed(4)}</div></div>
+                        <div><button class="btn ghost" data-idx="${idx}">Choose</button></div>`;
+        stopListEl.appendChild(el);
+      });
+      // attach choose handlers
+      stopListEl.querySelectorAll('button[data-idx]').forEach(b=>{
+        b.addEventListener('click', (ev)=>{
+          const idx = Number(ev.currentTarget.getAttribute('data-idx'));
+          simState.selectedStopIndex = idx;
+          // mark chosen visually
+          stopLabel.textContent = STOPS[idx].name;
+          // show on select map center
+          if(mapSelect) centerMapTo(STOPS[idx].lat, STOPS[idx].lng, 14, mapSelect);
+          // highlight stop marker on select map
+          drawSelectedRouteOnSelectMap();
+        });
+      });
+
+      // simulation speed
+      speedSelect.value = '1';
+      speedSelect.addEventListener('change', ()=> simState.simSpeed = Number(speedSelect.value));
+
+      // initial draw on select map
+      drawSelectedRouteOnSelectMap();
+    }
+
+    /* ===========================
+       Map initialization: three map instances (preview, select, track)
+       Only the selected route drawn on select & track maps.
+       =========================== */
+    function initMaps(){
+      // small preview (login screen) - static base
+      mapPreview = L.map('mapPreview', { zoomControl:false, attributionControl:false }).setView([13.055,80.13], 12);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapPreview);
+
+      // select map
+      mapSelect = L.map('mapSelect', { zoomControl:true }).setView([13.055,80.13], 12);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapSelect);
+      selectLayerGroup = L.layerGroup().addTo(mapSelect);
+      // draw all stops lightly so user sees options
+      STOPS.forEach(s => L.circleMarker([s.lat,s.lng], { radius:6, color:'#fff', fillColor:'#ffffff', fillOpacity:0.9 }).addTo(selectLayerGroup));
+
+      // track map
+      mapTrack = L.map('mapTrack', { zoomControl:true }).setView([13.055,80.13], 12);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapTrack);
+      trackLayerGroup = L.layerGroup().addTo(mapTrack);
+      // draw stops on track map too (but we will highlight selected stop)
+      STOPS.forEach(s => L.circleMarker([s.lat,s.lng], { radius:6, color:'#fff', fillColor:'#ffffff', fillOpacity:0.9 }).addTo(trackLayerGroup));
+    }
+
+    // center helper
+    function centerMapTo(lat,lng, z=14, mapRef=mapSelect){ if(mapRef) mapRef.setView([lat,lng], z, { animate:true }); }
+
+    /* ===========================
+       Draw only selected route on select/map pages
+       =========================== */
+    function drawSelectedRouteOnSelectMap(){
+      // clear
+      if(selectLayerGroup) selectLayerGroup.clearLayers();
+      // re-draw stops
+      STOPS.forEach(s => L.circleMarker([s.lat,s.lng], { radius:6, color:'#fff', fillColor:'#ffffff', fillOpacity:0.9 }).addTo(selectLayerGroup));
+
+      const key = busSelectEl.value;
+      if(!ROUTES[key]) return;
+      const route = ROUTES[key];
+
+      // draw polyline for ONLY this route
+      const poly = L.polyline(route.path, { color: route.color, weight:5, opacity:0.95 }).addTo(selectLayerGroup);
+      // draw stops for this route with labels
+      route.stops.forEach(st => L.circleMarker([st.lat,st.lng], { radius:8, color:'#022449', fillColor:route.color, fillOpacity:1 }).addTo(selectLayerGroup)
+        .bindTooltip(st.name, { permanent:false }));
+      // fit bounds
+      const g = L.featureGroup([poly]);
+      mapSelect.fitBounds(g.getBounds().pad(0.25));
+    }
+
+    /* ===========================
+       TRACK screen: show only selected route, animate only selected bus
+       =========================== */
+    function openTrack(){
+      const key = busSelectEl.value;
+      if(!state.student){ alert('Please login first'); showScreen('login'); return; }
+      if(simState.selectedStopIndex === undefined || simState.selectedStopIndex === null){ alert('Choose a stop first'); return; }
+      simState.selectedBusKey = key;
+      simState.simSpeed = Number(speedSelect.value) || 1;
+      // clear track layers
+      trackLayerGroup.clearLayers();
+      // draw selected route polyline & stop markers
+      const route = ROUTES[key];
+      simState.poly = L.polyline(route.path, { color: route.color, weight:6, opacity:0.95 }).addTo(trackLayerGroup);
+      // stops on route
+      route.stops.forEach(st => L.circleMarker([st.lat, st.lng], { radius:8, color:'#022449', fillColor:route.color, fillOpacity:1 }).addTo(trackLayerGroup));
+      // highlight chosen stop (from global STOPS list)
+      const chosenStop = STOPS[simState.selectedStopIndex];
+      if(simState.stopMarker) trackLayerGroup.removeLayer(simState.stopMarker);
+      simState.stopMarker = L.marker([chosenStop.lat, chosenStop.lng]).addTo(trackLayerGroup).bindPopup(`<b>${chosenStop.name}</b>`);
+
+      // place bus marker at start of route and create sim state
+      if(simState.marker) trackLayerGroup.removeLayer(simState.marker);
+      const start = route.path[0];
+      const busHtml = `<div style="background:${route.color};color:#022449;padding:6px 10px;border-radius:8px;font-weight:800">${route.id}</div>`;
+      const icon = L.divIcon({ html: busHtml, className:'', iconSize:[70,30], iconAnchor:[35,15] });
+      simState.marker = L.marker(start, { icon }).addTo(trackLayerGroup).bindPopup(`<b>${key}</b>`);
+
+      simState.progress = { index:0, frac:0, dir:1 };
+      // update labels
+      document.getElementById('studentLabel').textContent = state.student ? state.student.roll : '—';
+      document.getElementById('busLabel').textContent = key;
+      document.getElementById('stopLabel').textContent = chosenStop.name;
+
+      // show info card
+      mapInfoCard.style.display = 'block';
+      miBus.textContent = key;
+      miStop.textContent = chosenStop.name;
+
+      // fit
+      const group = L.featureGroup([simState.poly, simState.stopMarker, simState.marker]);
+      mapTrack.fitBounds(group.getBounds().pad(0.25));
+
+      // start simulation loop (only for this bus)
+      if(simState.simInterval) clearInterval(simState.simInterval);
+      simState.simInterval = setInterval(()=> tickSimulation(route, chosenStop), 900);
+      // switch screen
+      showScreen('track');
+    }
+
+    function tickSimulation(route, chosenStop){
+      const tickMs = 900;
+      const prog = simState.progress;
+      const path = route.path;
+      const speed = (route.speedKmph * 1000 / 3600) * (simState.simSpeed || 1); // m/s
+
+      const i = prog.index, j = Math.min(i+1, path.length-1);
+      const A = path[i], B = path[j];
+      const segDist = Math.max(1, haversine(A[0],A[1],B[0],B[1]));
+      const stepFrac = (speed * (tickMs/1000)) / segDist;
+      prog.frac += stepFrac * prog.dir;
+
+      if(prog.frac >= 1){
+        if(i < path.length - 2){ prog.index = i + 1; prog.frac = prog.frac - 1; prog.dir = 1; }
+        else { prog.frac = 1; prog.dir = -1; prog.index = path.length - 2; }
+      } else if(prog.frac <= 0){
+        if(i > 0){ prog.index = i - 1; prog.frac = 1 + prog.frac; prog.dir = -1; }
+        else { prog.frac = 0; prog.dir = 1; }
+      }
+
+      // interpolate current latlng
+      const a = path[prog.index], b = path[Math.min(prog.index+1, path.length-1)];
+      const lat = a[0] + (b[0]-a[0])*prog.frac;
+      const lng = a[1] + (b[1]-a[1])*prog.frac;
+      simState.marker.setLatLng([lat,lng]);
+
+      // compute remaining distance along route to chosenStop (approx)
+      const remaining = computeRemainingDistance([lat,lng], route, chosenStop);
+      const etaSec = remaining / (route.speedKmph * 1000/3600 + 0.01);
+      // update left labels & map info
+      distLabel.textContent = formatDistance(remaining);
+      etaLabel.textContent = formatETA(etaSec);
+      miDist.textContent = formatDistance(remaining);
+      miETA.textContent = formatETA(etaSec);
+      // update marker popup for quick info
+      simState.marker.bindPopup(`<b>${route.id}</b><div style="font-size:13px;color:#ddd">ETA ${formatETA(etaSec)}</div>`);
+    }
+
+    // compute remaining distance from current point to target stop along route (approx)
+    function computeRemainingDistance(currentLatLng, route, targetStop){
+      const path = route.path;
+      // find closest segment projection
+      let bestD = Infinity, bestIdx = 0, bestT = 0;
+      for(let i=0;i<path.length-1;i++){
+        const A = path[i], B = path[i+1];
+        const vx = B[1]-A[1], vy = B[0]-A[0];
+        const wx = currentLatLng[1]-A[1], wy = currentLatLng[0]-A[0];
+        const len2 = vx*vx + vy*vy;
+        let t = 0;
+        if(len2>0) t = Math.max(0, Math.min(1, (wx*vx + wy*vy)/len2));
+        const projLat = A[0] + (B[0]-A[0])*t;
+        const projLng = A[1] + (B[1]-A[1])*t;
+        const d = haversine(currentLatLng[0], currentLatLng[1], projLat, projLng);
+        if(d < bestD){ bestD = d; bestIdx = i; bestT = t; }
+      }
+      let total = bestD;
+      // find nearest index on path to target stop
+      let stopClosest = 0, stopMin = Infinity;
+      for(let i=0;i<path.length;i++){
+        const d = haversine(path[i][0], path[i][1], targetStop.lat, targetStop.lng);
+        if(d < stopMin){ stopMin = d; stopClosest = i; }
+      }
+      if(stopClosest <= bestIdx){
+        // fallback: direct straight-line
+        return haversine(currentLatLng[0], currentLatLng[1], targetStop.lat, targetStop.lng);
+      }
+      // projection coordinate
+      const proj = [ path[bestIdx][0] + (path[bestIdx+1][0]-path[bestIdx][0]) * bestT,
+                     path[bestIdx][1] + (path[bestIdx+1][1]-path[bestIdx][1]) * bestT ];
+      total += haversine(proj[0], proj[1], path[bestIdx+1][0], path[bestIdx+1][1]);
+      for(let k=bestIdx+1;k<stopClosest;k++){
+        total += haversine(path[k][0], path[k][1], path[k+1][0], path[k+1][1]);
+      }
+      total += haversine(path[stopClosest][0], path[stopClosest][1], targetStop.lat, targetStop.lng);
+      return total;
+    }
+
+    /* ===========================
+       Event bindings
+       =========================== */
+    backToLogin.addEventListener('click', ()=> showScreen('login'));
+    toTrackBtn.addEventListener('click', openTrack);
+
+    centerToBus.addEventListener('click', ()=>{
+      if(simState.marker) mapTrack.setView(simState.marker.getLatLng(), 15, { animate:true });
+    });
+    centerToStop.addEventListener('click', ()=>{
+      if(simState.stopMarker) mapTrack.setView(simState.stopMarker.getLatLng(), 15, { animate:true });
+    });
+
+    logoutFooter.addEventListener('click', ()=>{
+      localStorage.removeItem('pc_student');
+      state.student = null;
+      rollEl.value = ''; dobEl.value = '';
+      studentLabel.textContent = '—';
+      stopLabel.textContent = '—';
+      // clear sim
+      if(simState.simInterval) clearInterval(simState.simInterval);
+      simState.simInterval = null;
+      showScreen('login');
+    });
+
+    /* ===========================
+       Boot maps & UI
+       =========================== */
+    (function boot(){
+      initMaps();
+      // preview: draw nothing heavy
+      // populate stop list and buses
+      populateSelect();
+
+      // ensure preview map fits stops area
+      const stopPoints = STOPS.map(s=>[s.lat,s.lng]);
+      if(stopPoints.length) mapPreview.fitBounds(stopPoints, { padding:[40,40] });
+
+      // initial select map draw is handled in populateSelect()
+    })();
+
+    // tidy: remove intervals on unload
+    window.addEventListener('beforeunload', ()=> { if(simState.simInterval) clearInterval(simState.simInterval); });
+  </script>
+</body>
+</html>
